@@ -20,21 +20,14 @@ final class UiUpdate {
     private static final String ENDPOINT =
             "https://raw.githubusercontent.com/sdmillard/Masquerade/main/updates/android-ui.json";
     private static final String PUBLIC_KEY = "MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA1Bp4ZwVaSRRGjE7HPednHKtnjsMTsY8HmMDEMOEIeacdaERdZBz+1E5Y/YAJWgEwhQbv9o2+5NDAHduuU5wR+lUSZ5pnO5veSnanwTe6Kqhkh1ERTQKzxtxBLZxjbWrMIS3Sbg1uqrgqwlDySLaa2puVd+8HyW4HveQqzqS2CJsaqw96F6bnIFcSgFSwG9KqgtswPVx/0Nzr9OFdFV1CXg8jlXCh5AJJ9+P2e6eN/HPmc3fWlLLs/CTrglsHRqreNEdz9xmDqV+JInJzyL2KMVgWTLblszPcdCTSTGuyi333kNR0Ohk7o1QyI2ydKEHMVC1MnFC1ku47zX/IrDlr700OXRU9wleiNnPqmdNHSwY6U5Z4fXxXTUiQf9Sc9K/UuzlikcZz+wEtQgooAFBjr9mMzrDLCHNZefNpngVtcvb/HDzBdD3H/3S9JV6Hi7IRnGF/FRHJ35Yl0jMVqio+JiFQdBZvEfyTwF+grl09fAJv1I8I1fpKg7jaLl+7XLjhAgMBAAE=";
-    private static final int MAX_BYTES = 16 * 1024;
-    private static final int BUILTIN_VERSION = 1;
+    private static final int MAX_BYTES = 256 * 1024;
+    private static final int BUILTIN_VERSION = 2;
 
     final int version;
-    final String heading;
-    final String bookmarks;
-    final String search;
-    final String loadMore;
-
-    private UiUpdate(int version, String heading, String bookmarks, String search, String loadMore) {
+    final String html;
+    private UiUpdate(int version, String html) {
         this.version = version;
-        this.heading = heading;
-        this.bookmarks = bookmarks;
-        this.search = search;
-        this.loadMore = loadMore;
+        this.html = html;
     }
 
     static UiUpdate load(Context context) {
@@ -44,7 +37,7 @@ final class UiUpdate {
         } catch (Exception ignored) {
             // A missing or damaged cache falls back to the built-in interface.
         }
-        return new UiUpdate(BUILTIN_VERSION, "Masquerade", "Bookmarks", "Search", "Load more");
+        return new UiUpdate(BUILTIN_VERSION, null);
     }
 
     static synchronized void check(Context context) {
@@ -101,13 +94,8 @@ final class UiUpdate {
             throw new IOException("Invalid UI signature");
         }
         JSONObject ui = new JSONObject(new String(payload, StandardCharsets.UTF_8));
-        return new UiUpdate(ui.getInt("version"), label(ui, "heading"), label(ui, "bookmarks"),
-                label(ui, "search"), label(ui, "loadMore"));
-    }
-
-    private static String label(JSONObject ui, String field) throws Exception {
-        String value = ui.getString(field).trim();
-        if (value.isEmpty() || value.length() > 60) throw new IOException("Invalid UI label");
-        return value;
+        String html = ui.getString("html");
+        if (html.trim().isEmpty()) throw new IOException("Empty UI bundle");
+        return new UiUpdate(ui.getInt("version"), html);
     }
 }
