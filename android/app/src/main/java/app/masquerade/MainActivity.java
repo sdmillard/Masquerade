@@ -49,6 +49,9 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        android.content.Context app = getApplicationContext();
+        UiUpdate ui = UiUpdate.load(app);
+        new Thread(() -> UiUpdate.check(app), "masquerade-ui-update").start();
         FrameLayout frame = new FrameLayout(this);
         frame.setOnApplyWindowInsetsListener((view, insets) -> {
             if (android.os.Build.VERSION.SDK_INT >= 30) {
@@ -79,15 +82,16 @@ public final class MainActivity extends Activity {
         discovery.setPadding(24, 32, 24, 24);
         frame.addView(discovery, new FrameLayout.LayoutParams(-1, -1));
         TextView heading = new TextView(this);
-        heading.setText("Masquerade");
+        heading.setText(ui.heading);
+        heading.setContentDescription(ui.heading + ", UI version " + ui.version);
         heading.setTextSize(26);
         discovery.addView(heading);
         EditText query = new EditText(this);
         query.setSingleLine();
         query.setHint("Search scenarios");
         discovery.addView(query);
-        addButton(discovery, "Bookmarks", this::showBookmarks);
-        addButton(discovery, "Search", () -> search(query.getText().toString()));
+        addButton(discovery, ui.bookmarks, this::showBookmarks);
+        addButton(discovery, ui.search, () -> search(query.getText().toString()));
         addButton(discovery, "Open AI Dungeon / sign in", this::showBrowser);
         status = new TextView(this);
         status.setText("Enter a search to find scenarios.");
@@ -102,7 +106,7 @@ public final class MainActivity extends Activity {
                 prefetchIfNeeded();
             }
         });
-        addButton(discovery, "Load more", () -> loadMore(true));
+        addButton(discovery, ui.loadMore, () -> loadMore(true));
         setContentView(frame);
         browser.loadUrl(SITE);
     }
@@ -331,6 +335,7 @@ public final class MainActivity extends Activity {
         super.onDestroy();
     }
 }
+
 
 
 
