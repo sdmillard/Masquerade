@@ -8,13 +8,11 @@ import android.os.Looper;
 import android.view.View;
 import android.view.WindowInsets;
 import android.webkit.WebView;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebViewClient;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -26,19 +24,17 @@ public final class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private WebView browser;
     private LinearLayout playBar;
-    private LinearLayout library;
     private String searchTerm = "";
     private JSONObject bookmarks;
-    private LinearLayout discovery;
-    private LinearLayout results;
-    private TextView status;
+    private WebView discovery;
+    private JSONArray entries = new JSONArray();
+    private String status = "Enter a search to find scenarios.";
     private String lastSnapshot = "";
     private int searchGeneration;
     private boolean polling;
     private boolean searching;
     private int requestedCount = -1;
     private final java.util.Set<String> displayedCards = new java.util.HashSet<>();
-    private ScrollView scroll;
 
     private final Runnable poll = new Runnable() {
         @Override public void run() {
@@ -77,37 +73,25 @@ public final class MainActivity extends Activity {
         frame.addView(play, new FrameLayout.LayoutParams(-1, -1));
         playBar.setVisibility(View.GONE);
 
-        discovery = column();
+        discovery = new WebView(this);
         discovery.setBackgroundColor(0xff16131c);
-        discovery.setPadding(24, 32, 24, 24);
-        frame.addView(discovery, new FrameLayout.LayoutParams(-1, -1));
-        TextView heading = new TextView(this);
-        heading.setText(ui.heading);
-        heading.setContentDescription(ui.heading + ", UI version " + ui.version);
-        heading.setTextSize(26);
-        discovery.addView(heading);
-        EditText query = new EditText(this);
-        query.setSingleLine();
-        query.setHint("Search scenarios");
-        discovery.addView(query);
-        addButton(discovery, ui.bookmarks, this::showBookmarks);
-        addButton(discovery, ui.search, () -> search(query.getText().toString()));
-        addButton(discovery, "Open AI Dungeon / sign in", this::showBrowser);
-        status = new TextView(this);
-        status.setText("Enter a search to find scenarios.");
-        discovery.addView(status);
-
-        scroll = new ScrollView(this);
-        results = column();
-        scroll.addView(results);
-        discovery.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        scroll.setOnScrollChangeListener((view, x, y, oldX, oldY) -> {
-            if (y > oldY) {
-                prefetchIfNeeded();
+        discovery.getSettings().setJavaScriptEnabled(true);
+        discovery.getSettings().setAllowFileAccess(false);
+        discovery.getSettings().setAllowContentAccess(false);
+        discovery.getSettings().setBlockNetworkLoads(true);
+        discovery.setWebViewClient(new WebViewClient() {
+            @Override public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                return true;
             }
         });
-        addButton(discovery, ui.loadMore, () -> loadMore(true));
+        discovery.addJavascriptInterface(new InterfaceHost(), "MasqueradeHost");
+        frame.addView(discovery, new FrameLayout.LayoutParams(-1, -1));
         setContentView(frame);
+        if (ui.html == null) {
+            discovery.loadUrl("file:///android_asset/interface.html");
+        } else {
+            discovery.loadDataWithBaseURL("https://masquerade.invalid/", ui.html, "text/html", "UTF-8", null);
+        }
         browser.loadUrl(SITE);
     }
 
@@ -131,9 +115,9 @@ public final class MainActivity extends Activity {
         requestedCount = -1;
         lastSnapshot = "";
         displayedCards.clear();
-        scroll.scrollTo(0, 0);
-        results.removeAllViews();
-        status.setText("Waiting for AI Dungeon results…");
+        entries = new JSONArray();
+        status = "Waiting for AI Dungeon results…";
+        sendState();
         browser.loadUrl(SITE + "/search?searchTerm=" + Uri.encode(searchTerm));
     }
 
@@ -154,46 +138,21 @@ public final class MainActivity extends Activity {
                 String snapshot = (String) decoded;
                 if (snapshot.equals(lastSnapshot)) return;
                 JSONArray cards = new JSONArray(snapshot);
-                int previousCount = displayedCards.size();
                 lastSnapshot = snapshot;
                 for (int i = 0; i < cards.length(); i++) {
                     JSONObject card = cards.getJSONObject(i);
                     String label = card.getString("label");
-                    String title = label.replaceFirst("^scenario\\s+", "")
-                            .replaceFirst(", [^,]+ actions?, [^,]+ bookmarks?$", "");
-                    if (!displayedCards.add(title)) continue;
-                    String originQuery = searchTerm;
-                    LinearLayout row = column();
-                    addButton(row, label.replaceFirst("^scenario\\s+", ""), () -> openCard(label, originQuery));
-                    Button save = new Button(this);
-                    save.setText(isBookmarked(label) ? "Remove bookmark" : "Bookmark");
-                    save.setOnClickListener(view -> {
-                        toggleBookmark(label, originQuery);
-                        save.setText(isBookmarked(label) ? "Remove bookmark" : "Bookmark");
-                    });
-                    row.addView(save);
-                    results.addView(row);
-                    String text = card.optString("text");
-                    if (!text.trim().isEmpty()) {
-                        TextView description = new TextView(this);
-                        description.setText(text);
-                        row.addView(description);
-                    }
+                    if (!displayedCards.add(bookmarkKey(label))) continue;
+                    card.put("query", searchTerm);
+                    entries.put(card);
                 }
-                status.setText(displayedCards.size() + " loaded scenarios");
-                if (displayedCards.size() > previousCount) {
-                    scroll.post(this::prefetchIfNeeded);
-                }
+                status = displayedCards.size() + " loaded scenarios";
+                sendState();
             } catch (JSONException ignored) {
-                status.setText("Couldn't read the current search results.");
+                status = "Couldn't read the current search results.";
+                sendState();
             }
         });
-    }
-
-    private void prefetchIfNeeded() {
-        int viewport = scroll.getHeight();
-        int remaining = results.getHeight() - viewport - scroll.getScrollY();
-        if (viewport > 0 && remaining <= 4 * viewport) loadMore(false);
     }
 
     private void loadMore(boolean manual) {
@@ -236,33 +195,54 @@ public final class MainActivity extends Activity {
         getPreferences(MODE_PRIVATE).edit().putString("bookmarks", bookmarks.toString()).apply();
     }
 
-    private void showBookmarks() {
-        library = column();
-        addButton(library, "Back to search", this::showDiscovery);
-        ScrollView list = new ScrollView(this);
-        LinearLayout entries = column();
-        list.addView(entries);
-        library.addView(list, new LinearLayout.LayoutParams(-1, 0, 1));
-        if (bookmarks.length() == 0) {
-            TextView empty = new TextView(this);
-            empty.setText("No bookmarks yet. Bookmark a scenario from search.");
-            entries.addView(empty);
-        }
-        java.util.Iterator<String> keys = bookmarks.keys();
-        while (keys.hasNext()) {
-            String key = keys.next();
-            String query = bookmarks.optString(key);
-            addButton(entries, key.replaceFirst("^scenario\\s+", ""), () -> openCard(key, query));
-            addButton(entries, "Remove bookmark", () -> {
-                toggleBookmark(key, query);
-                showDiscovery();
-                showBookmarks();
+    private final class InterfaceHost {
+        @JavascriptInterface public void dispatch(String message) {
+            if (message == null || message.length() > 8192) return;
+            handler.post(() -> {
+                if (isDestroyed() || discovery.getVisibility() != View.VISIBLE) return;
+                try {
+                    JSONObject request = new JSONObject(message);
+                    String label = request.optString("label");
+                    String query = request.optString("query");
+                    switch (request.getString("action")) {
+                        case "ready": sendState(); break;
+                        case "search": search(query); break;
+                        case "more": loadMore(true); break;
+                        case "prefetch": loadMore(false); break;
+                        case "browser": showBrowser(); break;
+                        case "open": if (!label.isEmpty()) openCard(label, query); break;
+                        case "bookmark":
+                            if (!label.isEmpty()) toggleBookmark(label, query);
+                            sendState();
+                            break;
+                    }
+                } catch (JSONException ignored) {
+                    // Ignore malformed interface messages.
+                }
             });
         }
-        library.setBackgroundColor(0xff16131c);
-        FrameLayout frame = (FrameLayout) discovery.getParent();
-        frame.addView(library, new FrameLayout.LayoutParams(-1, -1));
-        discovery.setVisibility(View.GONE);
+    }
+
+    private void sendState() {
+        try {
+            JSONArray saved = new JSONArray();
+            java.util.Iterator<String> keys = bookmarks.keys();
+            while (keys.hasNext()) {
+                String label = keys.next();
+                saved.put(new JSONObject().put("label", label)
+                        .put("query", bookmarks.getString(label)).put("saved", true));
+            }
+            for (int i = 0; i < entries.length(); i++) {
+                JSONObject card = entries.getJSONObject(i);
+                card.put("saved", isBookmarked(card.getString("label")));
+            }
+            JSONObject state = new JSONObject().put("status", status)
+                    .put("results", entries).put("bookmarks", saved);
+            discovery.evaluateJavascript("window.masqueradeState?.(JSON.parse("
+                    + JSONObject.quote(state.toString()) + "))", null);
+        } catch (JSONException ignored) {
+            // Retain the current interface if a snapshot cannot be serialized.
+        }
     }
 
     private void openCard(String label, String query) {
@@ -301,12 +281,10 @@ public final class MainActivity extends Activity {
     }
 
     private void showDiscovery() {
-        if (library != null) {
-            ((FrameLayout) library.getParent()).removeView(library);
-            library = null;
-        }
+
         playBar.setVisibility(View.GONE);
         discovery.setVisibility(View.VISIBLE);
+        sendState();
         readResults();
     }
 
@@ -332,9 +310,11 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         browser.destroy();
+        discovery.destroy();
         super.onDestroy();
     }
 }
+
 
 
 
