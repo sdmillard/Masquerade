@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Masquerade</title>
+<style>
+:root{color-scheme:dark;font:16px system-ui;background:#121319;color:#efedf5}
+body{max-width:850px;margin:auto;padding:0 1rem 3rem}
+header{padding:1.4rem 0 .5rem}h1{margin:0}p{color:#beb9ce}
+form{position:sticky;top:0;background:#121319;padding:.8rem 0;border-bottom:1px solid #3b3748}
+.controls{display:flex;flex-wrap:wrap;gap:.6rem;align-items:end}
+label{display:grid;gap:.25rem;font-size:.85rem}.check{display:flex;align-items:center;min-height:44px}
+input,select,button{font:inherit;padding:.55rem;border-radius:.4rem;border:1px solid #696078;background:#211e2b;color:inherit}
+button,a,summary{cursor:pointer}a{color:#d8b8ff}
+article{padding:.85rem 0;border-bottom:1px solid #3b3748}
+h2{font-size:1.05rem;margin:0}.meta{font-size:.85rem;margin:.25rem 0 .45rem}
+summary{width:fit-content;color:#d8b8ff}details p{margin:.5rem 0}
+</style>
+<script src="discovery.js" defer></script>
+</head>
+<body>
+<header><h1>Masquerade</h1><p>Discovery prototype · Fictional scenarios</p></header>
+<main>
+<form id="filters" aria-label="Filter sample scenarios">
+<div class="controls">
+<label>Search <input id="query" type="search" value="space opera"></label>
+<label>Exclude words <input id="exclude" type="search" placeholder="e.g. isekai"></label>
+<label>Sort <select id="sort"><option value="original">Original order</option><option value="bookmarks">Most bookmarked</option><option value="actions">Most actions</option><option value="title">Title</option></select></label>
+<label class="check"><input id="titleOnly" type="checkbox">Title only</label>
+<button type="reset">Clear</button>
+</div>
+<p id="count" role="status"></p>
+<a id="official" href="https://play.aidungeon.com/search" target="_blank" rel="noopener noreferrer">Open query in AI Dungeon</a>
+</form>
+<section id="results" aria-label="Scenario results"></section>
+</main>
+</body>
+</html>
