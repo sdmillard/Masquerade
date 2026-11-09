@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Masquerade</title>
+<style>
+:root{color-scheme:dark;background:#16131c;color:#f1edf7;font:16px system-ui}
+body{margin:0;padding:1rem}h1{margin:0 0 .7rem}
+header{position:sticky;top:0;background:#16131c;padding:.3rem 0 .7rem}
+form,nav{display:flex;flex-wrap:wrap;gap:.4rem;margin:.4rem 0}
+input,button{font:inherit;color:inherit;background:#2c2439;border:1px solid #766386;border-radius:.4rem;padding:.6rem}
+input{min-width:0;flex:1}article{padding:.75rem 0;border-top:1px solid #504459}
+article p{margin:.3rem 0;color:#c9bdd4}article button{margin-right:.4rem}
+[hidden]{display:none}
+</style>
+<header>
+<h1 id="heading">Masquerade</h1>
+<form id="search-form"><input id="query" aria-label="Search scenarios" type="search"><button>Search</button></form>
+<nav><button id="library">Bookmarks</button><button id="sign-in">AI Dungeon / sign in</button></nav>
+<div id="status" role="status"></div>
+</header>
+<main id="rows"></main>
+<button id="more">Load more</button>
+<script>
+const el = id => document.getElementById(id);
+let library = false;
+let latest;
+let renderedKey = "";
+let searchPosition = 0;
+const send = (action, args = {}) => MasqueradeHost.dispatch(JSON.stringify({action, ...args}));
+el("search-form").onsubmit = event => {
+  event.preventDefault();
+  library = false;
+  el("query").blur();
+  scrollTo(0, 0);
+  send("search", {query: el("query").value});
+};
+el("library").onclick = () => {
+  if (!library) searchPosition = scrollY;
+  library = !library;
+  if (latest) render(latest);
+  scrollTo(0, library ? 0 : searchPosition);
+};
+el("sign-in").onclick = () => send("browser");
+el("more").onclick = () => send("more");
+function prefetch() {
+  if (!library && latest?.results.length &&
+      document.documentElement.scrollHeight - innerHeight - scrollY <= 4 * innerHeight) send("prefetch");
+}
+addEventListener("scroll", prefetch, {passive: true});
+function button(label, action) {
+  const node = document.createElement("button");
+  node.textContent = label;
+  node.onclick = action;
+  return node;
+}
+function render(state) {
+  latest = state;
+  el("heading").textContent = "Masquerade";
+  el("library").textContent = library ? "Back to search" : "Bookmarks";
+  el("more").hidden = library || !state.results.length;
+  el("status").textContent = library ? state.bookmarks.length + " bookmarks" : state.status;
+  const entries = library ? state.bookmarks : state.results;
+  const key = JSON.stringify([library, entries]);
+  if (renderedKey === key) return;
+  renderedKey = key;
+  el("rows").replaceChildren(...entries.map(entry => {
+    const row = document.createElement("article");
+    const {label, query} = entry;
+    row.append(button(label.replace(/^scenario\s+/i, ""), () => send("open", {label, query})));
+    row.append(button(entry.saved ? "Remove bookmark" : "Bookmark", () => send("bookmark", {label, query})));
+    if (entry.text) {
+      const description = document.createElement("p");
+      description.textContent = entry.text;
+      row.append(description);
+    }
+    return row;
+  }));
+  requestAnimationFrame(prefetch);
+}
+window.masqueradeState = render;
+send("ready");
+</script>
+</html>
